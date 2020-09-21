@@ -1,0 +1,15 @@
+server:
+  port: 8899
+spring:
+  datasource:
+    url: jdbc:postgresql://10.100.55.64:5432/ruleengine?currentSchema=ruleengine_opr&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: ruleengine_opr
+    password: ruleengine_opr5564
+    driver-class-name: org.postgresql.Driver
+    minmumIdle: 1
+    maxmumPoolSize: 2
+    maxLifeTime: 1800000
+    leakDetectionThreshold: 20000
+mybatis-plus:
+  type-aliases-package: com.example.springbootdemo.entity
+  mapper-locations: classpath:/mapper/*.xml
