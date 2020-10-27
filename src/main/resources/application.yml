@@ -2,9 +2,9 @@ server:
   port: 8899
 spring:
   datasource:
-    url: jdbc:postgresql://10.100.55.64:5432/ruleengine?currentSchema=ruleengine_opr&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    url: jdbc:postgresql://10.100.51.202:5432/ruleengine?currentSchema=ruleengine_opr&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
     username: ruleengine_opr
-    password: ruleengine_opr5564
+    password: ruleengine_5152
     driver-class-name: org.postgresql.Driver
     minmumIdle: 1
     maxmumPoolSize: 2
