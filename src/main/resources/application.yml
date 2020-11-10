@@ -10,6 +10,13 @@ spring:
     maxmumPoolSize: 2
     maxLifeTime: 1800000
     leakDetectionThreshold: 20000
+  mvc:
+    #出现错误时，直接抛出异常
+    throw-exception-if-no-handler-found: true
+  resources:
+    #不要为我们工程中的资源文件建立映射
+    add-mappings: false
+
 mybatis-plus:
   type-aliases-package: com.example.springbootdemo.entity
   mapper-locations: classpath:/mapper/*.xml
