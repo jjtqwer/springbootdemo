@@ -28,8 +28,20 @@ public class ResultData extends HashMap<String,Object> {
         return new ResultData();
     }
 
+    public static ResultData success(int code,String msg){
+        ResultData r=new ResultData();
+        r.put("code",code);
+        r.put("msg",msg);
+        return r;
+
+    }
+
     public ResultData put(String key,Object val){
         super.put(key,val);
         return this;
+    }
+
+    public static void main(String[] args) {
+        new String("abc");
     }
 }
