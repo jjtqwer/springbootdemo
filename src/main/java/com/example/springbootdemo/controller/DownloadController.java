@@ -2,7 +2,8 @@ package com.example.springbootdemo.controller;
 
 import com.example.springbootdemo.ResultData;
 import com.example.springbootdemo.exception.BizException;
-import com.example.springbootdemo.exception.CommonEnum;
+import com.example.springbootdemo.service.TbUserService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,11 +20,14 @@ public class DownloadController {
     @Value("${file.path}")
     private String filePath;
 
-    @Value("file.uploadPath")
+    @Value("${file.uploadPath}")
     private String fileUploadPath;
 
+    @Autowired
+    TbUserService tbUserService;
+
     /**
-     * 文件下载
+     * 文件下载 xlsx格式
      * @param response
      * @return
      */
@@ -37,8 +41,8 @@ public class DownloadController {
         BufferedInputStream bis=null;
         BufferedOutputStream bos=null;
         String downloadPath=filePath;
-        //生成的文件名
-        String fileName="template.xlsx";
+        //生成的文件名  压缩包就用zip结尾   xlsx就用xlsx结尾
+        String fileName="template"+downloadPath.substring(downloadPath.lastIndexOf("."));
         //要下载的文件对象
         File file=new File(downloadPath);
         //如果目录不存在，创建目录
@@ -94,12 +98,10 @@ public class DownloadController {
     public ResultData fileUpload(MultipartFile file){
         try {
             if (file.isEmpty()){
-                throw  new BizException("文件不能未空");
+                throw  new BizException("文件不能为空");
             }
             //获取文件名
             String fileName = file.getOriginalFilename();
-            //文件后缀名
-            String suffixName = fileName.substring(fileName.lastIndexOf("."));
             //文件存放路径
             String path=fileUploadPath+"/"+fileName;
             File dest=new File(path);
@@ -112,7 +114,7 @@ public class DownloadController {
             return ResultData.success(200,"文件上传成功");
         } catch (Exception e) {
             e.printStackTrace();
-            throw new BizException(CommonEnum.INTER_SERVER_ERROR,e);
+            throw new BizException(e.getMessage(),"500",e);
         }
     }
 

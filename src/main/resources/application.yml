@@ -18,13 +18,11 @@ spring:
     add-mappings: false
   thymeleaf:
     cache: false
-    mode: HTML5
-    prefix: classpath:/templates/
-    suffix: .html
 mybatis-plus:
   type-aliases-package: com.example.springbootdemo.entity
   mapper-locations: classpath:/mapper/*.xml
 
-
-file.path: D:/html/特殊城市（独立保监会）.xls #D:/file/三级公司-分销+-+非标件.xls
+#要下载的文件位置
+file.path: D:/html/ruleTemplate.zip #D:/html/特殊城市（独立保监会）.xls   #D:/file/三级公司-分销+-+非标件.xls
+#文件上传路径
 file.uploadPath: D:/upload
