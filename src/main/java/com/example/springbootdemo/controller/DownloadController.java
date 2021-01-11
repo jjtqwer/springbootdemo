@@ -3,15 +3,22 @@ package com.example.springbootdemo.controller;
 import com.example.springbootdemo.ResultData;
 import com.example.springbootdemo.exception.BizException;
 import com.example.springbootdemo.service.TbUserService;
+import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Controller
 @RequestMapping("download")
@@ -121,5 +128,53 @@ public class DownloadController {
     @RequestMapping("ceshi")
     public String ceshi(){
         return "ceshi";
+    }
+
+
+    @RequestMapping("downloadZip")
+    public void downloadZip(HttpServletResponse response,@RequestParam(defaultValue = "false") boolean keepDirStructure) throws IOException {
+        response.setContentType("application/octet-stream");
+        response.setHeader("Content-Disposition","attachment;filename="+ URLEncoder.encode("下载.zip","utf-8"));//防止中文乱码
+        List<String> paths=new ArrayList<>();
+        paths.add("C:\\Users\\ex_jingjintao\\Desktop/新建文本文档 (3).txt");
+        paths.add("C:\\Users\\ex_jingjintao\\Desktop/非车代理协议.xls");
+        paths.add("C:\\Users\\ex_jingjintao\\Desktop/新建 DOCX 文档.docx");
+        paths.add("C:\\Users\\ex_jingjintao\\Desktop/ttt.docx");
+        //File zipFile=new File("D:/test.zip");//zip的位置
+//        if(!zipFile.exists()){
+//            zipFile.createNewFile();
+//        }
+        ZipOutputStream zos=null;
+        try{
+            byte[] buf=new byte[1024];
+            //zos=new ZipOutputStream(new FileOutputStream(zipFile));
+            //浏览器下载
+            zos=new ZipOutputStream(response.getOutputStream());
+            for (int i = 0; i < paths.size(); i++) {
+                String path = paths.get(i);
+                if(StringUtils.isEmpty(path)){
+                    continue;
+                }
+                File sourceFile=new File(path);
+                FileInputStream fis=new FileInputStream(sourceFile);
+                if(keepDirStructure){
+                    zos.putNextEntry(new ZipEntry(path));
+                }else {
+                    zos.putNextEntry(new ZipEntry(sourceFile.getName()));
+                }
+                int len;
+                while ((len=fis.read(buf))  != -1){
+                    zos.write(buf,0,len);
+                }
+                zos.closeEntry();
+                fis.close();
+            }
+        }catch (Exception e){
+            e.printStackTrace();
+        }finally {
+            if(zos !=null){
+                zos.close();
+            }
+        }
     }
 }
