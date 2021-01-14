@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import java.util.Date;
 import java.util.concurrent.Executors;
 
-@Component
+//@Component
 @Slf4j
 //所有的定时任务都放在一个线程池中，定时任务启动时使用不同都线程。
 public class Jobs implements SchedulingConfigurer {
