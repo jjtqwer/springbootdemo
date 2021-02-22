@@ -30,6 +30,16 @@ public class TbUserController {
     @Value("${mail.username}")
     private String sender;
 
+    @RequestMapping("ex")
+    public String ex(){
+        throw new RuntimeException();
+    }
+
+    @RequestMapping("/test/{name}")
+    public String name(@PathVariable String name){
+        return "hello "+name;
+    }
+
     @RequestMapping("/list")
     public List<TbUserEntity> list(){
         List<TbUserEntity> list = tbUserService.list();
