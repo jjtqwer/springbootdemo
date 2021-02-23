@@ -1,4 +1,4 @@
-package com.example.springbootdemo;
+package com.example.springbootdemo.scheduletask;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;

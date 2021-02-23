@@ -1,4 +1,4 @@
-package com.example.springbootdemo;
+package com.example.springbootdemo.scheduletask;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -10,7 +10,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
-@Component
+//@Component
 @EnableAsync
 @Slf4j
 public class AsyncScheduledTasks {
