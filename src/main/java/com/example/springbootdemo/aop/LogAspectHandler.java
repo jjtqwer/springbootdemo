@@ -2,13 +2,17 @@ package com.example.springbootdemo.aop;
 
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.JoinPoint;
+import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.Signature;
 import org.aspectj.lang.annotation.*;
 import org.springframework.stereotype.Component;
+import org.springframework.util.Assert;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.servlet.http.HttpServletRequest;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 
 @Aspect
 @Component
@@ -29,6 +33,15 @@ public class LogAspectHandler {
      * 其中后面跟着“?”的是可选项
      * 例：
      * “execution(* *(..) throws Exception)”匹配所有抛出Exception的方法。
+     */
+
+    /**
+     * 执行顺序
+     * 没有异常的顺序：
+     * 先进到 @Around注解的方法中 在执行pjp.proceed();之前 进入@Before注解的方法中 ，然后执行@AfterReturning注解的方法 ，执行@After注解的方法，
+     * 然后执行@Around注解方法 pjp.proceed()之后的代码
+     * 出现异常的顺序：
+     * 先进到 @Around注解的方法中 在执行pjp.proceed();之前 进入@Before注解的方法中 ，执行@AfterThrowing注解的方法 ，执行@After注解的方法
      */
 
     /**
@@ -73,6 +86,21 @@ public class LogAspectHandler {
     }
 
     /**
+     * pjp.proceed(); 返回的是请求的返回值
+     * @param pjp
+     * @return
+     * @throws Throwable
+     */
+    @Around("pointCut()")
+    public Object around(ProceedingJoinPoint pjp) throws Throwable {
+        log.info("====around方法进入====");
+        //必须要调用 否则controller中的接口没有机会执行  导致@Before通知也不会触发
+        Object proceed = pjp.proceed();
+        log.info("=====around方法结束=====");
+        return proceed;
+    }
+
+    /**
      * 在上面定义的切面方法执行之后 执行
      *
      * @param joinPoint
@@ -109,5 +137,13 @@ public class LogAspectHandler {
     public void afterThrowing(JoinPoint joinPoint,Throwable ex){
         Signature signature = joinPoint.getSignature();
         log.info("执行方法{} 出错，异常为{} ",signature.getName(),ex);
+    }
+
+    public static void main(String[] args) throws UnknownHostException {
+        Assert.isTrue(true,"错误");
+        InetAddress localHost = InetAddress.getLocalHost();
+
+        System.out.println(localHost.getHostAddress());//获取电脑ip
+        System.out.println(localHost.getHostName());//获取电脑名称
     }
 }
