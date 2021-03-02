@@ -1,0 +1,570 @@
+﻿mysql
+char    定长字符串，速度快，但浪费空间
+    varchar 变长字符串，速度慢，但节省空间
+    M表示能存储的最大长度，此长度是字符数，非字节数。
+    不同的编码，所占用的空间不同。
+    char,最多255个字符，与编码无关。
+    varchar,最多65535字符，与编码有关。
+    一条有效记录最大不能超过65535个字节。
+        utf8 最大为21844个字符，gbk 最大为32766个字符，latin1 最大为65532个字符
+    varchar 是变长的，需要利用存储空间保存 varchar 的长度，如果数据小于255个字节，则采用一个字节来保存长度，反之需要两个字节来保存。
+    varchar 的最大有效长度由最大行大小和使用的字符集确定。
+    最大有效长度是65532字节，因为在varchar存字符串时，第一个字节是空的，不存在任何数据，然后还需两个字节来存放字符串的长度，所以有效长度是65535-1-2=65532字节。
+    例：若一个表定义为 CREATE TABLE tb(c1 int, c2 char(30), c3 varchar(N)) charset=utf8; 问N的最大值是多少？ 答：(65535-1-2-4-30*3)/3
+悲观锁
+总是假设最坏的情况，每次去拿数据的时候都认为别人会修改，所以每次在拿数据的时候都会上锁，这样别人想拿这个数据就会阻塞直到它拿到锁（共享资源每次只给一个线程使用，其它线程阻塞，用完后再把资源转让给其它线程）。传统的关系型数据库里边就用到了很多这种锁机制，比如行锁，表锁等，读锁，写锁等，都是在做操作之前先上锁。Java中synchronized和ReentrantLock等独占锁就是悲观锁思想的实现。
+乐观锁
+总是假设最好的情况，每次去拿数据的时候都认为别人不会修改，所以不会上锁，但是在更新的时候会判断一下在此期间别人有没有去更新这个数据，可以使用版本号机制和CAS算法实现。乐观锁适用于多读的应用类型，这样可以提高吞吐量，像数据库提供的类似于write_condition机制，其实都是提供的乐观锁。在Java中java.util.concurrent.atomic包下面的原子变量类就是使用了乐观锁的一种实现方式CAS实现的。
+两种锁的使用场景
+从上面对两种锁的介绍，我们知道两种锁各有优缺点，不可认为一种好于另一种，像乐观锁适用于写比较少的情况下（多读场景），即冲突真的很少发生的时候，这样可以省去了锁的开销，加大了系统的整个吞吐量。但如果是多写的情况，一般会经常产生冲突，这就会导致上层应用会不断的进行retry，这样反倒是降低了性能，所以一般多写的场景下用悲观锁就比较合适。
+乐观锁常见的两种实现方式
+1. 版本号机制
+一般是在数据表中加上一个数据版本号version字段，表示数据被修改的次数，当数据被修改时，version值会加一。当线程A要更新数据值时，在读取数据的同时也会读取version值，在提交更新时，若刚才读取到的version值为当前数据库中的version值相等时才更新，否则重试更新操作，直到更新成功。
+2. CAS算法
+即compare and swap（比较与交换），是一种有名的无锁算法。无锁编程，即不使用锁的情况下实现多线程之间的变量同步，也就是在没有线程被阻塞的情况下实现变量的同步，所以也叫非阻塞同步（Non-blocking Synchronization）。CAS算法涉及到三个操作数
+需要读写的内存值 V
+进行比较的值 A
+拟写入的新值 B
+当且仅当 V 的值等于 A时，CAS通过原子方式用新值B来更新V的值，否则不会执行任何操作（比较和替换是一个原子操作）。一般情况下是一个自旋操作，即不断的重试。
+乐观锁的缺点
+1 ABA 问题
+如果一个变量V初次读取的时候是A值，并且在准备赋值的时候检查到它仍然是A值，那我们就能说明它的值没有被其他线程修改过了吗？很明显是不能的，因为在这段时间它的值可能被改为其他值，然后又改回A，那CAS操作就会误认为它从来没有被修改过。这个问题被称为CAS操作的 "ABA"问题。
+JDK 1.5 以后的 AtomicStampedReference 类就提供了此种能力，其中的 compareAndSet 方法就是首先检查当前引用是否等于预期引用，并且当前标志是否等于预期标志，如果全部相等，则以原子方式将该引用和该标志的值设置为给定的更新值。
+2 循环时间长开销大
+自旋CAS（也就是不成功就一直循环执行直到成功）如果长时间不成功，会给CPU带来非常大的执行开销。 如果JVM能支持处理器提供的pause指令那么效率会有一定的提升，pause指令有两个作用，第一它可以延迟流水线执行指令（de-pipeline）,使CPU不会消耗过多的执行资源，延迟的时间取决于具体实现的版本，在一些处理器上延迟时间是零。第二它可以避免在退出循环的时候因内存顺序冲突（memory order violation）而引起CPU流水线被清空（CPU pipeline flush），从而提高CPU的执行效率。
+3 只能保证一个共享变量的原子操作
+CAS 只对单个共享变量有效，当操作涉及跨多个共享变量时 CAS 无效。但是从 JDK 1.5开始，提供了AtomicReference类来保证引用对象之间的原子性，你可以把多个变量放在一个对象里来进行 CAS 操作.所以我们可以使用锁或者利用AtomicReference类把多个共享变量合并成一个共享变量来操作。
+CAS与synchronized的使用情景
+简单的来说CAS适用于写比较少的情况下（多读场景，冲突一般较少），synchronized适用于写比较多的情况下（多写场景，冲突一般较多）
+1、对于资源竞争较少（线程冲突较轻）的情况，使用synchronized同步锁进行线程阻塞和唤醒切换以及用户态内核态间的切换操作额外浪费消耗cpu资源；而CAS基于硬件实现，不需要进入内核，不需要切换线程，操作自旋几率较少，因此可以获得更高的性能。
+2、对于资源竞争严重（线程冲突严重）的情况，CAS自旋的概率会比较大，从而浪费更多的CPU资源，效率低于synchronized。
+补充： Java并发编程这个领域中synchronized关键字一直都是元老级的角色，很久之前很多人都会称它为 “重量级锁” 。但是，在JavaSE 1.6之后进行了主要包括为了减少获得锁和释放锁带来的性能消耗而引入的 偏向锁 和 轻量级锁 以及其它各种优化之后变得在某些情况下并不是那么重了。synchronized的底层实现主要依靠 Lock-Free 的队列，基本思路是 自旋后阻塞，竞争切换后继续竞争锁，稍微牺牲了公平性，但获得了高吞吐量。在线程冲突较少的情况下，可以获得和CAS类似的性能；而线程冲突严重的情况下，性能远高于CAS。
+
+4.3.3 shutdown()VSshutdownNow()
+shutdown（） :关闭线程池，线程池的状态变为 SHUTDOWN。线程池不再接受新任务了，但是队列里的任务得执行完毕。
+shutdownNow（） :关闭线程池，线程的状态变为 STOP。线程池会终止当前正在运行的任务，并停止处理排队的任务并返回正在等待执行的 List。
+4.3.2 isTerminated() VS isShutdown()
+isShutDown 当调用 shutdown() 方法后返回为 true。
+isTerminated 当调用 shutdown() 方法后，并且所有提交的任务完成后返回为 true
+Executors 返回线程池对象的弊端如下：
+FixedThreadPool 和 SingleThreadExecutor ： 允许请求的队列长度为 Integer.MAX_VALUE,可能堆积大量的请求，从而导致 OOM。
+CachedThreadPool 和 ScheduledThreadPool ： 允许创建的线程数量为 Integer.MAX_VALUE ，可能会创建大量线程，从而导致 OOM。
+FixedThreadPool 被称为可重用固定线程数的线程池。通过 Executors 类中的相关源代码来看一下相关实现：
+ /**
+     * 创建一个可重用固定数量线程的线程池
+     */
+    public static ExecutorService newFixedThreadPool(int nThreads, ThreadFactory threadFactory) {
+        return new ThreadPoolExecutor(nThreads, nThreads,
+                                      0L, TimeUnit.MILLISECONDS,
+                                      new LinkedBlockingQueue<Runnable>(),
+                                      threadFactory);
+    }
+FixedThreadPool 的 execute() 方法：
+1、如果当前运行的线程数小于 corePoolSize， 如果再来新任务的话，就创建新的线程来执行任务；
+2、当前运行的线程数等于 corePoolSize 后， 如果再来新任务的话，会将任务加入 LinkedBlockingQueue；
+3、线程池中的线程执行完 手头的任务后，会在循环中反复从 LinkedBlockingQueue 中获取任务来执行；
+ 为什么不推荐使用FixedThreadPool？
+FixedThreadPool 使用无界队列 LinkedBlockingQueue（队列的容量为 Intger.MAX_VALUE）作为线程池的工作队列会对线程池带来如下影响 ：
+1、当线程池中的线程数达到 corePoolSize 后，新任务将在无界队列中等待，因此线程池中的线程数不会超过 corePoolSize；
+2、由于使用无界队列时 maximumPoolSize 将是一个无效参数，因为不可能存在任务队列满的情况。所以，通过创建 FixedThreadPool的源码可以看出创建的 FixedThreadPool 的 corePoolSize 和 maximumPoolSize 被设置为同一个值。
+3、由于 1 和 2，使用无界队列时 keepAliveTime 将是一个无效参数；
+4、运行中的 FixedThreadPool（未执行 shutdown()或 shutdownNow()）不会拒绝任务，在任务比较多的时候会导致 OOM（内存溢出）。
+SingleThreadExecutor 是只有一个线程的线程池。下面看看SingleThreadExecutor 的实现：
+ /**
+     *返回只有一个线程的线程池
+     */
+    public static ExecutorService newSingleThreadExecutor(ThreadFactory threadFactory) {
+        return new FinalizableDelegatedExecutorService
+            (new ThreadPoolExecutor(1, 1,
+                                    0L, TimeUnit.MILLISECONDS,
+                                    new LinkedBlockingQueue<Runnable>(),
+                                    threadFactory));
+    }
+SingleThreadExecutor的运行
+如果当前运行的线程数少于 corePoolSize，则创建一个新的线程执行任务；
+当前线程池中有一个运行的线程后，将任务加入 LinkedBlockingQueue
+线程执行完当前的任务后，会在循环中反复从LinkedBlockingQueue 中获取任务来执行；
+为什么不推荐使用SingleThreadExecutor？
+SingleThreadExecutor 使用无界队列 LinkedBlockingQueue 作为线程池的工作队列（队列的容量为 Intger.MAX_VALUE）。SingleThreadExecutor 使用无界队列作为线程池的工作队列会对线程池带来的影响与 FixedThreadPool 相同。说简单点就是可能会导致 OOM，
+CachedThreadPool 是一个会根据需要创建新线程的线程池。下面通过源码来看看 CachedThreadPool 的实现：
+ /**
+     * 创建一个线程池，根据需要创建新线程，但会在先前构建的线程可用时重用它。
+     */
+    public static ExecutorService newCachedThreadPool(ThreadFactory threadFactory) {
+        return new ThreadPoolExecutor(0, Integer.MAX_VALUE,
+                                      60L, TimeUnit.SECONDS,
+                                      new SynchronousQueue<Runnable>(),
+                                      threadFactory);
+    }
+CachedThreadPool 的corePoolSize 被设置为空（0），maximumPoolSize被设置为 Integer.MAX.VALUE，即它是无界的，这也就意味着如果主线程提交任务的速度高于 maximumPool 中线程处理任务的速度时，CachedThreadPool 会不断创建新的线程。极端情况下，这样会导致耗尽 cpu 和内存资源。
+CachedThreadPool 的 execute()方法的执行:
+1、首先执行 SynchronousQueue.offer(Runnable task) 提交任务到任务队列。如果当前 maximumPool 中有闲线程正在执行 SynchronousQueue.poll(keepAliveTime,TimeUnit.NANOSECONDS)，那么主线程执行 offer 操作与空闲线程执行的 poll 操作配对成功，主线程把任务交给空闲线程执行，execute()方法执行完成，否则执行下面的步骤 2；
+2、当初始 maximumPool 为空，或者 maximumPool 中没有空闲线程时，将没有线程执行 SynchronousQueue.poll(keepAliveTime,TimeUnit.NANOSECONDS)。这种情况下，步骤 1 将失败，此时 CachedThreadPool 会创建新线程执行任务，execute 方法执行完成；
+为什么不推荐使用CachedThreadPool？
+CachedThreadPool允许创建的线程数量为 Integer.MAX_VALUE ，可能会创建大量线程，从而导致 OOM。
+
+ScheduledThreadPoolExecutor 主要用来在给定的延迟后运行任务，或者定期执行任务
+ScheduledThreadPoolExecutor 使用的任务队列 DelayQueue 封装了一个 PriorityQueue，PriorityQueue 会对队列中的任务进行排序，执行所需时间短的放在前面先被执行(ScheduledFutureTask 的 time 变量小的先执行)，如果执行所需时间相同则先提交的任务将被先执行(ScheduledFutureTask 的 squenceNumber 变量小的先执行)。
+ScheduledThreadPoolExecutor 和 Timer 的比较：
+Timer 对系统时钟的变化敏感，ScheduledThreadPoolExecutor不是；
+Timer 只有一个执行线程，因此长时间运行的任务可以延迟其他任务。 ScheduledThreadPoolExecutor 可以配置任意数量的线程。 此外，如果你想（通过提供 ThreadFactory），你可以完全控制创建的线程;
+在TimerTask 中抛出的运行时异常会杀死一个线程，从而导致 Timer 死机:-( ...即计划任务将不再运行。ScheduledThreadExecutor 不仅捕获运行时异常，还允许您在需要时处理它们（通过重写 afterExecute 方法ThreadPoolExecutor）。抛出异常的任务将被取消，但其他任务将继续运行。
+ScheduledThreadPoolExecutor 的执行主要分为两大部分：
+当调用 ScheduledThreadPoolExecutor 的 scheduleAtFixedRate() 方法或者**scheduleWirhFixedDelay()** 方法时，会向 ScheduledThreadPoolExecutor 的 DelayQueue 添加一个实现了 RunnableScheduledFuture 接口的 ScheduledFutureTask 。
+线程池中的线程从 DelayQueue 中获取 ScheduledFutureTask，然后执行任务。
+ScheduledThreadPoolExecutor 为了实现周期性的执行任务，对 ThreadPoolExecutor做了如下修改：
+使用 DelayQueue 作为任务队列；
+获取任务的方不同
+执行周期任务后，增加了额外的处理
+ScheduledThreadPoolExecutor 执行周期任务的步骤
+1、线程 1 从 DelayQueue 中获取已到期的 ScheduledFutureTask（DelayQueue.take()）。到期任务是指 ScheduledFutureTask的 time 大于等于当前系统的时间；
+2、线程 1 执行这个 ScheduledFutureTask；
+3、线程 1 修改 ScheduledFutureTask 的 time 变量为下次将要被执行的时间；
+4、线程 1 把这个修改 time 之后的 ScheduledFutureTask 放回 DelayQueue 中（DelayQueue.add())。
+线程私有的：程序计数器  虚拟机栈  本地方法栈
+线程共享的： 堆  方法区  直接内存 (非运行时数据区的一部分)
+inode 介绍
+inode 是 linux/unix 文件系统的基础。那么，inode 是什么?有什么作用呢?
+硬盘的最小存储单位是扇区(Sector)，块(block)由多个扇区组成。文件数据存储在块中。块的最常见的大小是 4kb，约为 8 个连续的扇区组成（每个扇区存储 512 字节）。一个文件可能会占用多个 block，但是一个块只能存放一个文件。
+虽然，我们将文件存储在了块(block)中，但是我们还需要一个空间来存储文件的 元信息 metadata ：如某个文件被分成几块、每一块在的地址、文件拥有者，创建时间，权限，大小等。这种 存储文件元信息的区域就叫 inode，译为索引节点：i（index）+node。 每个文件都有一个 inode，存储文件的元信息。
+可以使用 stat 命令可以查看文件的 inode 信息。每个 inode 都有一个号码，Linux/Unix 操作系统不使用文件名来区分文件，而是使用 inode 号码区分不同的文件。
+简单来说：inode 就是用来维护某个文件被分成几块、每一块在的地址、文件拥有者，创建时间，权限，大小等信息。
+简单总结一下：
+inode ：记录文件的属性信息，可以使用 stat 命令查看 inode 信息。
+block ：实际文件的内容，如果一个文件大于一个块时候，那么将占用多个 block，但是一个块只能存放一个文件。（因为数据是由 inode 指向的，如果有两个文件的数据存放在同一个块中，就会乱套了）
+File 的 createTempFile() 方法 
+该方法有两种调用方式： 
+createTempFile(String prefix, String suffix)； 
+在默认临时文件目录中创建一个空文件，使用给定前缀和后缀生成其名称。 
+createTempFile(String prefix, String suffix, File directory)； 
+在指定目录中创建一个新的空文件，使用给定的前缀和后缀字符串生成其名称。 
+File file2 = new File("D:\\temp");// D;/temp 为一个目录 
+File tempFile1= file2.createTempFile("msg", ".tmp",file2); 
+File tempFile2 = file2.createTempFile("msg", ".tmp"); 
+System.out.println(tempFile2.getAbsolutePath()); 
+可以这么认为，createTempFile() 方法，在指定的目录下创建一个temp文件，directory 类型为File ，如果路径不存在，则创建失败。createTempFile(String prefix, String suffix)；
+windows下，createTempFile方法默认的保存路径为：C:\Documents and Settings\Administrator\Local Settings\Temp 。
+客户端–发送带有 SYN 标志的数据包–一次握手–服务端
+服务端–发送带有 SYN/ACK 标志的数据包–二次握手–客户端
+客户端–发送带有带有 ACK 标志的数据包–三次握手–服务端
+2.2 为什么要三次握手
+三次握手的目的是建立可靠的通信信道，说到通讯，简单来说就是数据的发送与接收，而三次握手最主要的目的就是双方确认自己与对方的发送与接收是正常的。
+第一次握手：Client 什么都不能确认；Server 确认了对方发送正常，自己接收正常
+第二次握手：Client 确认了：自己发送、接收正常，对方发送、接收正常；Server 确认了：对方发送正常，自己接收正常
+第三次握手：Client 确认了：自己发送、接收正常，对方发送、接收正常；Server 确认了：自己发送、接收正常，对方发送、接收正常
+所以三次握手就能确认双发收发功能都正常，缺一不可。
+ThreadPoolExecutor构造函数重要参数分析
+ThreadPoolExecutor 3 个最重要的参数：
+corePoolSize : 核心线程数线程数定义了最小可以同时运行的线程数量。
+maximumPoolSize : 当队列中存放的任务达到队列容量的时候，当前可以同时运行的线程数量变为最大线程数。
+workQueue: 当新任务来的时候会先判断当前运行的线程数量是否达到核心线程数，如果达到的话，新任务就会被存放在队列中。
+ThreadPoolExecutor其他常见参数:
+keepAliveTime:当线程池中的线程数量大于 corePoolSize 的时候，如果这时没有新的任务提交，核心线程外的线程不会立即销毁，而是会等待，直到等待的时间超过了 keepAliveTime才会被回收销毁；
+unit : keepAliveTime 参数的时间单位。
+threadFactory :executor 创建新线程的时候会用到。
+handler :饱和策略。关于饱和策略下面单独介绍一下。
+Thread类:
+void createMap(Thread t, T firstValue) {
+        t.threadLocals = new ThreadLocalMap(this, firstValue);
+    }
+rulehbase登录：
+用户:jboss 密码sittpuse
+并发编程的三个重要特性
+原子性 : 一个的操作或者多次操作，要么所有的操作全部都得到执行并且不会收到任何因素的干扰而中断，要么所有的操作都执行，要么都不执行。synchronized 可以保证代码片段的原子性。
+可见性 ：当一个变量对共享变量进行了修改，那么另外的线程都是立即可以看到修改后的最新值。volatile 关键字可以保证共享变量的可见性。
+有序性 ：代码在执行的过程中的先后顺序，Java 在编译器以及运行期间的优化，代码的执行顺序未必就是编写代码时候的顺序。volatile 关键字可以禁止指令进行重排序优化。
+2.4. 说说 synchronized 关键字和 volatile 关键字的区别
+synchronized 关键字和 volatile 关键字是两个互补的存在，而不是对立的存在！
+volatile 关键字是线程同步的轻量级实现，所以volatile 性能肯定比 synchronized 关键字要好。但是volatile 关键字只能用于变量而 synchronized 关键字可以修饰方法以及代码块。
+volatile 关键字能保证数据的可见性，但不能保证数据的原子性。synchronized 关键字两者都能保证。
+volatile 关键字主要用于解决变量在多个线程之间的可见性，而 synchronized 关键字解决的是多个线程之间访问资源的同步性。
+讲一下 synchronized 关键字的底层原理
+synchronized 同步语句块的实现使用的是 monitorenter 和 monitorexit 指令，其中 monitorenter 指令指向同步代码块的开始位置，monitorexit 指令则指明同步代码块的结束位置。在执行monitorenter时，会尝试获取对象的锁，如果锁的计数器为 0 则表示锁可以被获取，获取后将锁计数器设为 1 也就是加 1。在执行 monitorexit 指令后，将锁计数器设为 0，表明锁被释放。如果获取对象锁失败，那当前线程就要阻塞等待，直到锁被另外一个线程释放为止。
+synchronized 修饰的方法并没有 monitorenter 指令和 monitorexit 指令，取得代之的确实是 ACC_SYNCHRONIZED 标识，该标识指明了该方法是一个同步方法。
+不过两者的本质都是对对象监视器 monitor 的获取。
+获取LinkedList头节点（index=0）数据方法
+ getFirst(),element(),peek(),peekFirst() 这四个获取头结点方法的区别在于对链表为空时的处理，是抛出异常还是返回null，其中getFirst() 和element() 方法将会在链表为空时，抛出异常
+element()方法的内部就是使用getFirst()实现的。它们会在链表为空时，抛出NoSuchElementException
+peek(),peekFirst()会在链表为空时返回null
+获取尾节点（index=-1）数据方法:
+getLast() 方法在链表为空时，会抛出NoSuchElementException，而peekLast() 则不会，只是会返回 null。
+java 中的 length属性是针对数组说的,比如说你声明了一个数组,想知道这个数组的长度则用到了 length 这个属性.
+java 中的 length() 方法是针对字符串说的,如果想看这个字符串的长度则用到 length() 这个方法.
+java 中的 size() 方法是针对泛型集合说的,如果想看这个泛型有多少个元素,就调用此方法来查看!
+System.arraycopy(Object,src,int srcPos,Object dest,int destPos,int length)：
+参数意思:源数组，源数组的起始位置，目标数组，目标数组的起始位置，复制长度
+获取 Class 对象的四种方式
+1.知道具体类的情况下可以使用：
+Class alunbarClass = TargetObject.class;
+2.通过 Class.forName()传入类的路径获取：
+Class alunbarClass1 = Class.forName("cn.javaguide.TargetObject");一旦初始化，就会触发目标对象的 static块代码执行，static参数也会被再次初始化。
+3.通过对象实例instance.getClass()获取：
+4.通过类加载器xxxClassLoader.loadClass()传入类路径获取
+class clazz = ClassLoader.LoadClass("cn.javaguide.TargetObject");通过类加载器获取Class对象不会进行初始化，意味着不进行包括初始化等一些列步骤，静态块和静态对象不会得到执行
+快速失败(fail-fast) 是 Java 集合的一种错误检测机制。在使用迭代器对集合进行遍历的时候，我们在多线程下操作非安全失败(fail-safe)的集合类可能就会触发 fail-fast 机制，导致抛出 ConcurrentModificationException 异常。 另外，在单线程下，如果在遍历过程中对集合对象的内容进行了修改的话也会触发 fail-fast 机制。
+注：增强 for 循环也是借助迭代器进行遍历。
+举个例子：多线程下，如果线程 1 正在对集合进行遍历，此时线程 2 对集合进行修改（增加、删除、修改），或者线程 1 在遍历过程中对集合进行修改，都会导致线程 1 抛出 ConcurrentModificationException 异常。
+为什么呢？
+每当迭代器使用 hashNext()/next()遍历下一个元素之前，都会检测 modCount 变量是否为 expectedModCount 值，是的话就返回遍历；否则抛出异常，终止遍历。
+如果我们在集合被遍历期间对其进行修改的话，就会改变 modCount 的值，进而导致 modCount != expectedModCount ，进而抛出 ConcurrentModificationException 异常。
+什么是安全失败(fail-safe)呢？
+明白了快速失败(fail-fast)之后，安全失败(fail-safe)我们就很好理解了。
+采用安全失败机制的集合容器，在遍历时不是直接在集合内容上访问的，而是先复制原有集合内容，在拷贝的集合上进行遍历。所以，在遍历过程中对原集合所作的修改并不能被迭代器检测到，故不会抛 ConcurrentModificationException 异常。
+排序:负值在前，正值在后
+comparable 和 Comparator 的区别
+   comparable 接口实际上是出自java.lang包 它有一个 compareTo(Object obj)方法用来排序
+   comparator接口实际上是出自 java.util 包它有一个compare(Object obj1, Object obj2)方法用来排序
+hashCode() 和 equals() 的关系:
+1. 第一种 不会创建“类对应的散列表”
+         这里所说的“不会创建类对应的散列表”是说：我们不会在HashSet, Hashtable, HashMap等等这些本质是散列表的数据结构中，用到该类。例如，不会创建该类的HashSet集合。
+        在这种情况下，该类的“hashCode() 和 equals() ”没有半毛钱关系的！
+        这种情况下，equals() 用来比较该类的两个对象是否相等。而hashCode() 则根本没有任何作用，所以，不用理会hashCode()。
+2. 第二种 会创建“类对应的散列表”
+        这里所说的“会创建类对应的散列表”是说：我们会在HashSet, Hashtable, HashMap等等这些本质是散列表的数据结构中，用到该类。例如，会创建该类的HashSet集合。
+        在这种情况下，该类的“hashCode() 和 equals() ”是有关系的：
+        1)、如果两个对象相等，那么它们的hashCode()值一定相同。
+              这里的相等是指，通过equals()比较两个对象时返回true。
+        2)、如果两个对象hashCode()相等，它们并不一定相等。
+               因为在散列表中，hashCode()相等，即两个键值对的哈希值相等。然而哈希值相等，并不一定能得出键值对相等。补充说一句：“两个不同的键值对，哈希值相等”，这就是哈希冲突。
+        此外，在这种情况下。若要判断两个对象是否相等，除了要覆盖equals()之外，也要覆盖hashCode()函数。否则，equals()无效。
+双向链表： 包含两个指针，一个 prev 指向前一个节点，一个 next 指向后一个节点。
+双向循环链表： 最后一个节点的 next 指向 head，而 head 的 prev 指向最后一个节点，构成一个环。
+Java Io 流共涉及 40 多个类，这些类看上去很杂乱，但实际上很有规则，而且彼此之间存在非常紧密的联系， Java I0 流的 40 多个类都是从如下 4 个抽象类基类中派生出来的。
+InputStream/Reader: 所有的输入流的基类，前者是字节输入流，后者是字符输入流。
+OutputStream/Writer: 所有输出流的基类，前者是字节输出流，后者是字符输出流。
+线程状态:
+NEW:初始状态，线程被创建，但是还没有调用start()方法
+RUNNABLE:运行状态，Java线程将操作系统中的就绪和运行两种状态笼统地称作运行中
+BLOCKED:阻塞状态，表示线程阻塞于锁
+WAITING:等待状态，表示线程进入等待状态，进入该状态表示当前线程需要等待其他线程做出一些特定动作(通知或中断)
+TIME_WAITING:超时等待状态，该状态不同于WAITING，它是可以在指定的时间自行返回的
+TERMINATED:终止状态，表示当前线程已经执行完毕
+线程创建之后它将处于 NEW（新建） 状态，调用 start() 方法后开始运行，线程这时候处于 READY（可运行） 状态。可运行状态的线程获得了 cpu 时间片（timeslice）后就处于 RUNNING（运行） 状态。
+当线程执行 wait()方法之后，线程进入 WAITING（等待） 状态。进入等待状态的线程需要依靠其他线程的通知才能够返回到运行状态，而 TIME_WAITING(超时等待) 状态相当于在等待状态的基础上增加了超时限制，比如通过 sleep（long millis）方法或 wait（long millis）方法可以将 Java 线程置于 TIMED WAITING 状态。当超时时间到达后 Java 线程将会返回到 RUNNABLE 状态。当线程调用同步方法时，在没有获取到锁的情况下，线程将会进入到 BLOCKED（阻塞） 状态。线程在执行 Runnable 的run()方法之后将会进入到 TERMINATED（终止） 状态。
+对象实例存在于堆内存，对象引用在栈内存中，局部变量则存在于栈内存。
+浅拷贝：对基本数据类型进行值传递，对引用数据类型进行引用传递般的拷贝，此为浅拷贝。
+深拷贝：对基本数据类型进行值传递，对引用数据类型，创建一个新的对象，并复制其内容，此为深拷贝。
+Java 程序设计语言对对象采用的不是引用调用，实际上，对象引用是按 值传递的。
+下面再总结一下 Java 中方法参数的使用情况：
+一个方法不能修改一个基本数据类型的参数（即数值型或布尔型）。
+一个方法可以改变一个对象参数的状态。
+一个方法不能让对象参数引用一个新的对象。
+基本类型	位数	字节	默认值
+int	32	4	0
+short	16	2	0
+long	64	8	0L
+byte	8	1	0
+char	16	2	'u0000'
+float	32	4	0f
+double	64	8	0d
+boolean	1		false
+Java 基本类型的包装类的大部分都实现了常量池技术，即 Byte,Short,Integer,Long,Character,Boolean；前面 4 种包装类默认创建了数值[-128，127] 的相应类型的缓存数据，Character创建了数值在[0,127]范围的缓存数据，Boolean 直接返回True Or False。如果超出对应范围仍然会去创建新的对象。
+/**
+*此方法将始终缓存-128 到 127（包括端点）范围内的值，并可以缓存此范围之外的其他值。
+*/
+    public static Integer valueOf(int i) {
+        if (i >= IntegerCache.low && i <= IntegerCache.high)
+            return IntegerCache.cache[i + (-IntegerCache.low)];
+        return new Integer(i);
+    }
+Integer i1=40；Java 在编译的时候会直接将代码封装成 Integer i1=Integer.valueOf(40);，从而使用常量池中的对象。
+Integer i1 = new Integer(40);这种情况下会创建新的对象。
+xml文件中怎么写小于号 等特殊符号
+将有小于符号的sql语句放到下面语法的文本内容部分中，就可以了。
+<![CDATA[文本内容]]>
+Mybatis异常-java.lang.IllegalArgumentException: invalid comparison:java.util.Date and java.lang.String
+原因：在Mapper.xml中对非字符串类型的数据进行了是否为空判断，如date类型的数据Create_Date != ' '，decimal类型的数据price != ' '都会报这个错误。只有字符串才需要（！= ''）非空判断,date类型的数据可以（！=null）判断。
+HTTP:是一个通信协议，是一个超文本传输协议，它基于TCP/IP来传输文本、图片、视频、音频等，HTTP不提供数据包的传输功能，那是TCP/IP干的。
+HTTP的本质是客户端和服务端约定好的一种通信格式.
+RPC:通过网络进行远程调用
+maven打jar包时 跳过测试模块:1.File->settings->maven->Runner->skip tests 前面的复选框勾上
+2.pom->build标签中plugins标签中<!-- 跳过单元测试 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <skipTests>true</skipTests>
+                </configuration>
+            </plugin>。
+maven打jar包还是war包:pom.xml->version标签下packing标签中指明jar还是war。
+maven打包步骤:maven->clean->compile>package.
+war包也可以用java -jar 的方式启动
+mysql密码:tt123456..
+SQL truncate 、delete与drop区别
+相同点：
+1.truncate和不带where子句的delete、以及drop都会删除表内的数据。
+2.drop、truncate都是DDL语句(数据定义语言),执行后会自动提交。 
+不同点：
+1. truncate 和 delete 只删除数据不删除表的结构(定义)
+drop 语句将删除表的结构被依赖的约束(constrain)、触发器(trigger)、索引(index)；依赖于该表的存储过程/函数将保留,但是变为 invalid 状态。
+2. delete 语句是数据库操作语言(dml)，这个操作会放到 rollback segement 中，事务提交之后才生效；如果有相应的 trigger，执行的时候将被触发。
+truncate、drop 是数据库定义语言(ddl)，操作立即生效，原数据不放到 rollback segment 中，不能回滚，操作不触发 trigger。
+3.delete 语句不影响表所占用的 extent，高水线(high watermark)保持原位置不动
+drop 语句将表所占用的空间全部释放。
+truncate 语句缺省情况下见空间释放到 minextents个 extent，除非使用reuse storage；truncate 会将高水线复位(回到最开始)。
+4.速度，一般来说: drop> truncate > delete
+5.安全性：小心使用 drop 和 truncate，尤其没有备份的时候.否则哭都来不及
+使用上,想删除部分数据行用 delete，注意带上where子句. 回滚段要足够大.
+想删除表,当然用 drop
+想保留表而将所有数据删除，如果和事务无关，用truncate即可。如果和事务有关,或者想触发trigger,还是用delete。
+如果是整理表内部的碎片，可以用truncate跟上reuse stroage，再重新导入/插入数据。
+6.delete是DML语句,不会自动提交。drop/truncate都是DDL语句,执行后会自动提交。
+7、TRUNCATE   TABLE   在功能上与不带   WHERE   子句的   DELETE   语句相同：二者均删除表中的全部行。但   TRUNCATE   TABLE   比   DELETE   速度快，且使用的系统和事务日志资源少。DELETE   语句每次删除一行，并在事务日志中为所删除的每行记录一项。TRUNCATE   TABLE   通过释放存储表数据所用的数据页来删除数据，并且只在事务日志中记录页的释放。 
+8、TRUNCATE   TABLE   删除表中的所有行，但表结构及其列、约束、索引等保持不变。新行标识所用的计数值重置为该列的种子。如果想保留标识计数值，请改用   DELETE。如果要删除表定义及其数据，请使用   DROP   TABLE   语句。  
+9、对于由   FOREIGN   KEY   约束引用的表，不能使用   TRUNCATE   TABLE，而应使用不带   WHERE   子句的   DELETE   语句。由于   TRUNCATE   TABLE   不记录在日志中，所以它不能激活触发器。    
+10、TRUNCATE   TABLE   不能用于参与了索引视图的表。 
+IDEA正则表达式替换 .代表一个字符, (是特殊字符需要用\转义，.*匹配所有,$0是替换标准，[\u4e00-\u9fa5]匹配汉字
+1）equals() 的作用是用来判断两个对象是否相等。
+2）hashCode() 的作用是获取对象的哈希码；哈希码一般是一个整数，用来确定对象在哈希表（比如 HashMap）中的索引位置。
+拿 HashMap 来说，它本质上是通过数组实现的。当我们要获取某个“值”时，实际上是要获取数组中的某个位置的元素。而数组的位置，就是通过“键”来获取的；更进一步说，是通过“键”对应的哈希码计算得到的。
+3）如果两个对象需要相等（equals），那么它们必须有着相同的哈希码（hashCode）；
+4）但如果两个对象有着相同的哈希码，它们却不一定相等。
+：“一定要同时重写 equals() 和 hashCode() 吗？”
+回答当然是否定的。如果对象作为键在哈希表中，那么两个方法都要重写，因为 put 和 get 的时候需要用到哈希码和 equals() 方法；
+如果对象不在哈希表中，仅用来判断是否相等，那么重写 equals() 就行了。
+如果只重写了equals 而没有重写hashCode，即使两个对象equals相等，它们的hashCode值也不相同。违背了如果两个对象equals相等，
+那么hashCode一定也是相同的。所以重写了equals，hashCode也一定要重写。
+windows删除文件快捷键ctrl+d
+问题描述：
+ERROR:  operator does not exist: timestamp without time zone > character varying
+解决方法：
+//注意此处的格式必须是 yyyy-mm-dd hh:mm:ss[.f...] 这样的格式，中括号表示可选，否则报错
+Timestamp alarmStartTime = Timestamp.valueOf("2011-05-09 11:49:45");
+postman发post请求,Headers上加Content-type=application/json,Body上raw里加需要传的参数k-v
+https://mp.weixin.qq.com/s?__biz=MzIxNzQwNjM3NA==&mid=2247487370&idx=1&sn=f94d3d8474a835c6f083050326de5957&chksm=97fb0143a08c885593b6cb39825bd860d565904d70bd2057536168f2b9a505b5b09af70246ce&cur_album_id=1324106807119347712&scene=189#rd
+学枚举，反射
+1997-2-19 JDK1.1,代表技术有:JAR文件格式，JDBC，JavaBeans，RMI（远程方法调用）
+1998-12-4 JDK1.2:把java拆分为3个方向：面向桌面开发的J2SE，面向企业开发的J2EE，面向移动开发的J2ME
+2002-2-13 JDK1.4,Java真正走向成熟的一个版本，代表技术有：正则表达式，NIO
+2004-9-30 JDK1.5，在易用性上做出了非常大的改进，比如：自动装箱，泛型，动态注解，枚举，可变参数，foreach循环
+2006-12-11 JDK6：J2SE变成了Java SE 6，J2EE变成了 Java EE 6，J2ME变成了Java ME 6
+2009-2-19 JDK7发布
+2014-3-18 JDK8,带着最强有力的武器-Lambda表达式而来
+2017-9-21 JDK9发布，
+JDK是Java Development ToolKit 的简称，也就是Java开发工具包，它是整个Java的核心，包括Java运行时环境（Java Runtime Environment 简称JRE），Java程序编译命令（javac），Java程序运行命令（java），Java字节码反编译命令（javap），以及Java基础类库（比如rt.jar --像常见的包io、lang、math、net、nio、util 等都在它里面）等等
+类中各成员初始化的顺序是：
+父类的静态字段——>父类静态代码块——>子类静态字段——>子类静态代码块——>
+父类成员变量（非静态字段）——>父类非静态代码块——>父类构造器——>子类成员变量——>子类非静态代码块——>子类构造器
+idea远程分支不显示解决方法：https://www.cnblogs.com/buguge/articles/10129889.html
+Redis Setnx（SET if Not eXists） 命令在指定的 key 不存在时，为 key 设置指定的值。
+Redis Setex 命令为指定的 key 设置值及其过期时间。如果 key 已经存在， SETEX 命令将会替换旧的值。
+Redis Msetnx 命令用于所有给定 key 都不存在时，同时设置一个或多个 key-value 对。当所有 key 都成功设置，返回 1 。 如果所有给定 key 都设置失败(至少有一个 key 已经存在)，那么返回 0 。
+var reg=/[a-zA-Z]/i
+reg.test(字符串):是否包含字母
+查询第11条到第15条数据
+MySQL使用 limit m,n
+select * from 表名 limit 10,5
+PostgreSQL使用 limit m offset n
+select * from 表名 limit 5 offset 10
+SQL Server使用top
+select top 5 * from 表名 where 排序字段not in (select top 10 排序字段from 表名)
+Oracle使用rownum
+select * from (select 字段,rownum rn from 表名where rownum <= 15)where rn >= 10;
+算法、数据结构、网络、操作系统、linux
+MySql--三种注释写法
+需要特别注意  --   这种注释后面要加一个空格
+#DELETE FROM SeatInformation  
+/*DELETE FROM SeatInformation */
+-- DELETE FROM SeatInformation
+ArrayList:https://blog.csdn.net/sihai12345/article/details/79382649
+4<<3 4x2^3
+4>>2 4/(2*2)
+idea debug调试:shift+f7进入方法
+psfs	快速打出public static final String
+ctrl+alt+ <—方向键	返回刚才查看的地方，非常实用
+ctrl+alt+o:删除引入没用的jar包
+敏捷工作台mm:jingjintao123
+将十进制转换为二进制：
+思路：对十进制的数进行除2取余法：
+将二进制转换为十进制
+思路：对二进制从后往前数第i位上的数进行乘以2的i-1 次方相加
+head下面我加入了meta标签，其中http-equiv="refresh"就是设置了一个跳转，content="5’
+代表5秒后跳转，后面的链接就是要跳转的链接。
+<meta http-equiv="refresh" content="5;https://blog.csdn.net/jgdabc">
+秒 分 时 每月第几天 月 星期
+" */10 * * * * *"                 表示每10秒执行一次
+"0 0 8-10 * * *"                 表示每天8，9，10点执行
+"0 0/30 8-10 * * *"            表示每天8点到10点，每半小时执行
+"0 0 9-17 * * MON-FRI"     表示每周一至周五，9点到17点的0分0秒执行
+"0 0 0 25 12 ?"                  表示每年圣诞节（12月25日）0时0分0秒执行
+负数参与的取模运算规则：先忽略负号，按照正数运算之后，被取模的数是正数结果就取正，反之取负。（注：(-2)%5中被取模数是-2）
+方法在运行时才动态绑定；但成员变量是在编译时绑定的
+Vue.js中this.$nextTick()的使用
+this.$nextTick()将回调延迟到下次 DOM 更新循环之后执行。在修改数据之后立即使用它，然后等待 DOM 更新。它跟全局方法 Vue.nextTick 一样，不同的是回调的 this 自动绑定到调用它的实例上。
+项目SIT地址:https://isits.axa.cn/newruleengine/index.html#/home
+获取elementui table单击的单元格的行和列
+https://blog.csdn.net/KangTongShun/article/details/106003678
+Ajax 的使用步骤
+1. 创建 XMLHttpRequest 对象
+var xhr = new XMLHttpRequest();
+2. 给定请求方式以及请求地址
+xhr.open("get","https://www.csdn.net/");
+3. 发送请求
+xhr.send();
+4. 获取服务器端给客户端的响应数据
+xhr.onreadystatechange = function(){ 
+//0:open()没有被调用 
+//1:open()正在被调用 
+//2:send()正在被调用 
+//3:服务端正在返回结果 
+//4:请求结束，并且服务端已经结束发送数据到客户端 
+if(xhr.readyState == 4 && xhr.status == 200){ 
+ document.getElementById("span").innerHTML=xhr.responseText; 
+ alert(xhr.responseText); } 
+}
+count = count || 1意思就是若count存在那么就count=count若不存在就是count=1
+Mybatis plus 插入数据时将自动递增的主键手动进行赋值设置
+@TableId(type = IdType.INPUT)
+@TableField(exist = false) 注解加载bean属性上，表示当前属性不是数据库的字段，但在项目中必须使用，这样在新增等使用bean的时候，mybatis-plus就会忽略这个，不会报错
+逻辑运算符:
+^:异或：和或有点不一样。
+两边结果一样，就为false。
+两边结果不一样，就为true.
+String d ="2"; 
+String e ="23";
+e = e.substring(0, 1);
+System.out.println(e.equals(d)); 
+System.out.println(e==d);
+结果:true,false
+过滤器可以串联：
+{{ message | filterA | filterB }}
+过滤器是 JavaScript 函数，因此可以接受参数：
+{{ message | filterA('arg1', arg2) }}
+这里，message 是第一个参数，字符串 'arg1' 将传给过滤器作为第二个参数， arg2 表达式的值将被求值然后传给过滤器作为第三个参数。
+<!-- 完整语法 -->
+<a v-bind:href="url"></a>
+<!-- 缩写 -->
+<a :href="url"></a>
+v-on 缩写
+<!-- 完整语法 -->
+<a v-on:click="doSomething"></a>
+<!-- 缩写 -->
+<a @click="doSomething"></a>
+idea删除一行快捷键：ctrl+x
+桌面删除快捷键:ctrl+d
+选中想被try/catch包围的语句，同时按下ctrl+alt+t，
+byte: 1Byte
+char,short: 2Byte
+int,float: 4Byte
+long,double: 8Byte
+Java 中 + 操作法的优先级大于 ==
+当对象被序列化时，属性 SSN 的值为 111222333，但是因为该属性是短暂的，该值没有被发送到输出流。所以反序列化后 Employee 对象的 SSN 属性为 0。transient ：在类型前面,短暂的
+mybatis  使用#{参数}传入会加上单引号  如果你要做动态的排序或传入动态的表名，比如  order by   column，这个时候务必要用${},
+因为如果你使用了#{},那么打印出来的将会是  select * from table order by  'name' 
+debug下跳出for循环，将光标定位在for循环外，然后点alt+F9(Run to Cursor)
+dailidizhi10.100.61.92 8080 
+美罗家园
+java多行注释：选中，ctrl+shift+/
+$("[name=value]").val() 取出name为value的值
+低  ------------------------------------>  高
+byte,short,char—> int —> long—> float —> double 
+通过url路径找参数
+var url2 = 'https://gitbook.cn/gitchat/geekbooks?tag=%E5%A4%A7%E6%95%B0%E6%8D%AE&name=gy&age=22';
+        var temp2 = url2.split('?')[1];
+        var pram2 = new URLSearchParams('?'+temp2);
+        console.log(pram2.get('tag')); // 大数据
+        console.log(pram2.get('name'));// gy
+        console.log(pram2.get('age')); // 22
+        console.log(temp2);
+通过接口的类名找到**SqlMapDAO这个类来找sql语句
+\\10.138.121.43 
+在idea中知道类名,查找类,展示类,快速查找某个类或方法在整个项目中的位置:快捷键Ctrl + Shift + n
+window系统杀死进程：tskill 进程ID
+window下查看进程:netstat –ano | findstr 端口号
+Assert.assertEquals();及其重载方法: 1. 如果两者一致, 程序继续往下运行. 2. 如果两者不一致, 中断测试方法, 抛出异常信息 AssertionFailedError .
+ctrl+h 查看当前接口的所有实现类，通过url路径快速找到类快捷键：shift+shift，快速显示桌面快捷键:win+D
+private static final long serialVersionUID=1L意思是定义程序序列化ID。
+序列化ID，相当于身份认证，主要用于程序的版本控制，保持不同版本的兼容性，在程序版本升级时避免程序报出版本不一致的错误。
+全局搜索：ctrl+shift+f
+form1.target="_self";  :: TARGET的值有以下几种：
+
+_blank:将返回信息显示在新开的浏览器窗口中
+
+_parent:将返回信息显示在父级浏览器窗口中
+
+_self:将返回信息显示在当前浏览器窗口中
+
+_top:将返回信息显示在顶级浏览器窗口中
+局部变量没有默认值，实例变量有默认值
+标签必须放在希望跳出的最外层循环之前，并且必须紧跟一个冒号（：）。
+int i=3;
+        read_data:
+        while (i<5){
+            System.out.println(i);
+            i--;
+            if(i<0){
+                break read_data;
+            }
+        }
+        System.out.println("jieshu");
+
+1>.代码格式化
+Ctrl+Alt+L
+2>.application.yml配置信息左对齐快捷键
+Shift+Tab
+
+select * from auto_opr.t_agent_define t
+
+select * from  TP_RULE_OPR.T_COLLECTION_PACKAGE ;
+select * from  TP_RULE_OPR.T_COLLECTION_RELATION;
+select * from  AUTO_OPR.T_DEPARTMENT_DEFINE;
+文件导出excel:https://www.cnblogs.com/yui66/p/9632873.html
+//原始字符串
+var string = "欢迎访问!\r\nhangge.com    做最好的开发者知识平台";
+//替换所有的换行符
+string = string.replace(/\r\n/g,"<br>")
+string = string.replace(/\n/g,"<br>");
+this.ruleMatchDetail1 = log.ruleMatchDetail1.replace(/[\r\n]/g, "<br>").replace(/[\s]/g, "&nbsp;")
+//替换所有的空格（中文空格、英文空格都会被替换）
+string = string.replace(/\s/g,"&nbsp;");
+//输出转换后的字符串
+console.log(string);
+DDL与DML的区别
+DML(Data Manipulation Language)数据操纵语言：
+适用范围：对数据库中的数据进行一些简单操作，如insert,delete,update,select等.
+DDL(Data Definition Language)数据定义语言：
+适用范围：对数据库中的某些对象(例如，database,table)进行管理，如Create,Alter和Drop.truncate
+1.DML操作是需要手动控制事务的开启、提交(commit)和回滚的。
+2.DDL操作是隐性提交的，不能rollback！
+xml 对集合遍历
+<foreach collection="deletedFlag" item="item" open="and C.deleted_flag in(" close=")" separator=",">
+            #{item}
+        </foreach>
+将本地jar包导入maven本地仓库:terminal终端执行
+mvn install:install-file -Dfile="D:\ideaWork\newRuleEngine2\target\newruleengineapi.jar" -DgroupId=com.aaa -DartifactId=newruleengine -Dversion=1.1 -Dpacking=jar
+出现循环依赖时 使用@Lazy
+idea激活网站
+http://idea.medeming.com/jetbrains/
+vue url拼接
+`col/ttt?age=${age}`
+bigdecimal.negate()返回对象的负值
+@ConfigurationProperties：
+　　告诉SpringBoot将本类中的所有属性和配置文件中相关的配置进行绑定；
+ 　　prefix = "xxx"：配置文件中哪个下面的所有属性进行一一映射
+ 只有这个组件是容器中的组件，才能容器提供的@ConfigurationProperties功能；
+ @ConfigurationProperties(prefix = "xxx")默认从全局配置文件中获取值；
+windows10 rocketmq 启动broker失败 errno1455
+    https://www.pianshen.com/article/99921876978/
+执行start mqbroker.cmd -n 127.0.0.1:9876 autoCreateTopicEnable=true时
+windows10 rocketmq 启动broker失败 找不到或无法加载主类 
+  修改runbroker.cmd  set "JAVA_OPT=%JAVA_OPT% -cp %CLASSPATH%" 将%CLASSPATH%前后各加一个英文双引号  保存 重新启动
+windows10 rocketmq可视化工具  https://www.pianshen.com/article/81771268147/
+windows rocketmq安装步骤
+pgsql
+--创建序列						
+--create SEQUENCE  test_seq 
+--start with 1 INCREMENT by 1 no MINVALUE no MAXVALUE cache 1 ;
+
+--设置表中某个字段自增
+--alter table test alter column id set DEFAULT nextval('test_seq');
+
+--select NEXTVAL('test_seq') 
+--设置序列从几开始
+--alter SEQUENCE seq_fact_doc RESTART WITH 1
+
+--删除序列
+--drop SEQUENCE if EXISTS test_seq 
+
+--表中添加新列
+--alter table ruleengine_opr.t_decision_group_dimensionality_relation add column if not EXISTS channel_source_type varchar(20);
+--alter table ruleengine_opr.test add column if not EXISTS channel_source_type varchar(20)  ;
